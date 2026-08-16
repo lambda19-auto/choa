@@ -1,196 +1,141 @@
 # AI Telegram Finance
 
-`p_choa` is a financial assistant built as a multi-agent AI system. Multiple intelligent agents work together as a single mechanism, analyzing requests, processing financial context, and producing structured responses.
-
-The project is focused on modularity, transparent architecture, and production readiness.
-
----
+`choa` is a Telegram financial assistant built as a multi-agent AI system. Specialized agents process transactions, request missing information, analyze financial data, and prepare structured responses through a shared router.
 
 ## Features
 
-* Multi-agent architecture
-* Financial analysis and structured reasoning
-* Agent interaction orchestration
-* Ready-to-use Docker image
-* Fast installation via `uv`
-* Configuration through environment variables
-
----
+- Multi-agent request routing
+- Transaction recognition and accounting
+- Financial analysis and CFS reporting
+- Telegram webhook integration
+- HeyGen avatar integration
+- Google Sheets synchronization
+- Configuration through environment variables
+- Dependency management with `uv`
 
 ## Architecture
 
-The system is built around several AI agents connected through a shared orchestration layer.
-Each agent performs its own role, while coordination logic combines their outputs into the final response.
+The application separates Telegram transport, routing, financial agents, external integrations, and logging into independent modules.
 
-General workflow:
+```text
+User → Telegram bot → Router → Specialized agent → Response
+```
 
-User → Telegram bot → Orchestrator → Specialized AI agents → Final response
+The main application code is located in `service/`:
 
----
+- `service/telegram/bot.py` — Telegram webhook server and message handling
+- `service/core_and_router.py` — request routing and agent orchestration
+- `service/accounting.py` — transaction processing
+- `service/analyze.py` — financial analysis
+- `service/cfs.py` — cash-flow statement generation
+- `service/google_sheets.py` — Google Sheets integration
+- `service/avatar.py` — HeyGen integration
+- `service/logging_setup.py` — application logging
+
+## Requirements
+
+- Python 3.13 or newer
+- [`uv`](https://docs.astral.sh/uv/)
+- Telegram bot token
+- OpenRouter API key
+- HeyGen API key
+- Public HTTPS URL for the Telegram webhook
+- Google Cloud service-account credentials for Google Sheets synchronization
 
 ## Installation
 
-### Option 1 — Local setup (for development)
-
-Requirements:
-
-* Python 3.13+
-* `uv`
-
-#### Clone the repository
+### 1. Clone the repository
 
 ```bash
-git clone https://github.com/lambda19-auto/p_choa.git
+git clone https://github.com/lambda19-auto/choa.git
+cd choa
 ```
 
-#### Create and activate a virtual environment
+### 2. Install dependencies
 
-```bash
-uv venv
-source .venv/bin/activate.fish
-```
-
-#### Install dependencies
+Create the virtual environment and install the locked dependencies:
 
 ```bash
 uv sync
 ```
 
-#### Environment variables
+You can run commands through `uv run` without activating the environment. To activate it manually:
 
-Create a `.env` file based on:
+```bash
+# Bash or Zsh
+source .venv/bin/activate
 
+# Fish
+source .venv/bin/activate.fish
 ```
-.env.example
+
+### 3. Configure environment variables
+
+Copy the example configuration:
+
+```bash
+cp .env.example .env
 ```
 
-Required keys:
+Fill in the values in `.env`:
 
-```
+```dotenv
 # OpenRouter
 OPENROUTER_API_KEY=your_api_key
 
-# Telegram Bot
+# Telegram
 BOT_TOKEN=your_token
-WEBHOOK_BASE_URL=your_domain
+WEBHOOK_BASE_URL=https://your-domain.example
 WEBHOOK_PATH=/telegram/webhook
-WEBHOOK_SECRET_TOKEN=your_strong_password
+WEBHOOK_SECRET_TOKEN=your_strong_secret
 WEB_SERVER_HOST=0.0.0.0
 WEB_SERVER_PORT=8080
 
 # HeyGen
 HEYGEN_API_KEY=your_api_key
 
-# Google Sheets API
-# JSON key file should be placed in repository root (p_choa/)
-GOOGLE_CREDENTIALS_JSON=google_credentials.json
-GOOGLE_JOURNAL_SHEET_URL=your_table
-GOOGLE_CFS_SHEET_URL=your_table
-```
-
-Additionally, for synchronizing the operations journal and CFS report with Google Sheets:
-
-```
+# Google Sheets
 GOOGLE_CREDENTIALS_JSON=google_credentials.json
 GOOGLE_JOURNAL_SHEET_URL=https://docs.google.com/spreadsheets/d/.../edit#gid=...
 GOOGLE_CFS_SHEET_URL=https://docs.google.com/spreadsheets/d/.../edit#gid=...
 ```
 
-> `GOOGLE_CREDENTIALS_JSON` is the name or path to a Google service account JSON file.
-> Depending on your setup, you can place the file directly in the project root `p_choa/`.
+Place the Google service-account JSON file at the path specified by `GOOGLE_CREDENTIALS_JSON`. Do not commit this file or `.env` to the repository. Share the journal and CFS spreadsheets with the service-account email.
 
-Services used:
+`WEBHOOK_BASE_URL` must be a publicly reachable HTTPS address. During development, it can be provided by a secure tunnel or a locally configured reverse proxy.
 
-* OpenRouter
-* HeyGen
-* Google Sheets API (optional, for storing the operations journal and CFS report)
+## Run
 
-#### Run
-
-The bot runs in **webhook** mode (without long polling). Set a public HTTPS URL in `WEBHOOK_BASE_URL` (for example, via Nginx/Cloudflare Tunnel), then run:
+Start the bot from the repository root:
 
 ```bash
-python3 -m service.telegram.bot
+uv run python -m service.telegram.bot
 ```
 
----
+The application starts the webhook server using `WEB_SERVER_HOST` and `WEB_SERVER_PORT`, then registers the Telegram webhook from `WEBHOOK_BASE_URL` and `WEBHOOK_PATH`.
 
-### Option 2 — Docker (recommended)
+## Configuration reference
 
-The Docker image is available on Docker Hub.
-
-Pull the image:
-
-```bash
-docker pull lambda19main/p_choa:1.0.0
-```
-Prepare a local `data` directory (on the host), which should contain:
-
-* `google_credentials.json` for Google Sheets
-* a `logs/` subdirectory for container logs
-
-```bash
-mkdir -p data/logs
-# Copy your service account file:
-# cp /path/to/google_credentials.json data/google_credentials.json
-```
-
-Run example:
-
-```bash
-docker run -d \
-  --name choa-bot \
-  --restart unless-stopped \
-  -p 8080:8080 \
-  -v "$(pwd)/data/credentials.json:/p_choa/credentials.json" \
-  -v "$(pwd)/data/logs:/p_choa/logs" \
-  -e OPENROUTER_API_KEY=your_key \
-  -e BOT_TOKEN=your_token \
-  -e HEYGEN_API_KEY=your_key \
-  -e WEBHOOK_BASE_URL=https://your-domain.example \
-  -e WEBHOOK_PATH=/telegram/webhook \
-  -e WEBHOOK_SECRET_TOKEN=your_secret \
-  -e WEB_SERVER_HOST=0.0.0.0 \
-  -e WEB_SERVER_PORT=8080 \
-  -e GOOGLE_CREDENTIALS_JSON=/p_choa/credentials.json \
-  -e GOOGLE_JOURNAL_SHEET_URL="https://docs.google.com/spreadsheets/d/.../edit#gid=..." \
-  -e GOOGLE_CFS_SHEET_URL="https://docs.google.com/spreadsheets/d/.../edit#gid=..." \
-  p_choa:1.0.0
-```
-
----
-
-## Configuration
-
-Configuration is done via environment variables.
-
-For local development:
-
-* rename `.env.example` → `.env`
-
-For production:
-
-* pass variables using `-e` flags in Docker
-* or use your infrastructure's secret manager
-
----
-
-## Requirements
-
-* Python 3.13+
-* Telegram bot token
-* OpenRouter API key
-* HeyGen API key
-
----
+| Variable | Purpose |
+| --- | --- |
+| `OPENROUTER_API_KEY` | Access to the AI models through OpenRouter |
+| `BOT_TOKEN` | Telegram bot token from BotFather |
+| `WEBHOOK_BASE_URL` | Public HTTPS base URL |
+| `WEBHOOK_PATH` | Telegram webhook endpoint path |
+| `WEBHOOK_SECRET_TOKEN` | Secret used to verify Telegram webhook requests |
+| `WEB_SERVER_HOST` | Local interface for the webhook server |
+| `WEB_SERVER_PORT` | Local port for the webhook server |
+| `HEYGEN_API_KEY` | Access to HeyGen avatar generation |
+| `GOOGLE_CREDENTIALS_JSON` | Path to the Google service-account JSON file |
+| `GOOGLE_JOURNAL_SHEET_URL` | Operations journal spreadsheet URL |
+| `GOOGLE_CFS_SHEET_URL` | CFS report spreadsheet URL |
 
 ## Development
 
-The project is built with an emphasis on:
+When dependencies change, update the environment and lock file with:
 
-* Clear separation of agent roles
-* Extensible orchestration logic
-* Future integration of financial tools
+```bash
+uv sync
+```
 
----
-
+Keep secrets, generated logs, local data, and service-account credentials outside version control.
